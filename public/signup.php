@@ -1,58 +1,47 @@
 <?php
 require '../config/db.php';
-require '../config/mail.php'; // Ensure mail.php is included for email functionality
-require '../config/cors.php'; // CORS fix
+require '../config/cors.php';
 
-header('Content-Type: application/json'); // Ensure the content type is always JSON
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Check if POST parameters are set
     if (isset($_POST['username'], $_POST['password'], $_POST['email'])) {
-        $username = $_POST['username'];
-        $password = $_POST['password'];
-        $email = $_POST['email'];
+        $username = trim($_POST['username']);
+        $password = trim($_POST['password']);
+        $email = trim($_POST['email']);
 
-        // Hash the password
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        // Generate OTP and expiry
-        $otp = rand(100000, 999999); // Generate a random OTP
-        $otpExpiry = date('Y-m-d H:i:s', strtotime('+30 minutes')); // OTP valid for 30 minutes
-
         try {
-            // Insert user into the database with OTP and expiry time
-            $stmt = $pdo->prepare("INSERT INTO users (username, password, email, otp, otp_expiry) VALUES (:username, :password, :email, :otp, :otp_expiry)");
+            $stmt = $pdo->prepare("
+                INSERT INTO users (username, password, email) 
+                VALUES (:username, :password, :email)
+            ");
+
             $result = $stmt->execute([
                 'username' => $username,
                 'password' => $hashedPassword,
-                'email' => $email,
-                'otp' => $otp,
-                'otp_expiry' => $otpExpiry
+                'email'    => $email
             ]);
 
             if ($result) {
-                // Send OTP email
-                if (sendOtpEmail($email, $username, $otp)) {
-                    echo json_encode(['status' => 'success', 'message' => 'Signup successful! Please check your email for the OTP.']);
-                } else {
-                    echo json_encode(['status' => 'error', 'message' => 'Signup successful but failed to send OTP email.']);
-                }
+                echo json_encode(['status' => 'success', 'message' => 'Signup successful!']);
             } else {
-                echo json_encode(['status' => 'error', 'message' => 'Failed to register user']);
+                echo json_encode(['status' => 'error', 'message' => 'Failed to register user.']);
             }
         } catch (PDOException $e) {
-            // Check for unique constraint violation (duplicate email)
-            if ($e->getCode() === '23505') { // PostgreSQL error code for unique violation
-                echo json_encode(['status' => 'error', 'message' => 'This email is already registered. Please log in or use a different email.']);
+            if ($e->getCode() === '23505') {
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'This email is already registered. Try logging in or use another email.'
+                ]);
             } else {
-                // General error message
-                echo json_encode(['status' => 'error', 'message' => 'An unexpected error occurred. Please try again.']);
+                echo json_encode(['status' => 'error', 'message' => 'PDO Error: ' . $e->getMessage()]);
             }
         }
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Missing required fields']);
+        echo json_encode(['status' => 'error', 'message' => 'Missing required fields.']);
     }
 } else {
-    echo json_encode(['status' => 'error', 'message' => 'Invalid request method']);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid request method.']);
 }
-?>
